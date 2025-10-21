@@ -4,6 +4,7 @@ import { generateAccessToken, generateRefreshToken } from '../utils/jwt.js';
 import { smsService } from './sms.service.js';
 import { AppError } from '../middlewares/error.middleware.js';
 import { blacklistToken } from '../utils/tokenBlacklist.js';
+import bcrypt from 'bcrypt';
 
 const prisma = new PrismaClient();
 
@@ -11,6 +12,85 @@ const prisma = new PrismaClient();
  * 认证服务
  */
 class AuthService {
+  /**
+   * 账号密码注册
+   */
+  async registerWithPassword(params: { username?: string; email?: string; password: string; }): Promise<{ userId: string; username?: string; email?: string; }>{
+    const { username, email } = params;
+    const rawPassword = params.password || '';
+
+    if ((!username || username.trim().length < 3) && (!email || email.trim().length === 0))
+      throw new AppError('请提供用户名或邮箱', 400);
+    if (rawPassword.length < 6)
+      throw new AppError('密码长度至少6位', 400);
+
+    const normalizedEmail = email ? email.trim().toLowerCase() : undefined;
+    const normalizedUsername = username ? username.trim() : undefined;
+
+    // 唯一性检查
+    if (normalizedUsername) {
+      const exists = await prisma.user.findUnique({ where: { username: normalizedUsername } });
+      if (exists) throw new AppError('用户名已被占用', 409);
+    }
+    if (normalizedEmail) {
+      const exists = await prisma.user.findUnique({ where: { email: normalizedEmail } });
+      if (exists) throw new AppError('邮箱已被占用', 409);
+    }
+
+    const passwordHash = await bcrypt.hash(rawPassword, 10);
+
+    const user = await prisma.user.create({
+      data: {
+        username: normalizedUsername,
+        email: normalizedEmail,
+        passwordHash,
+        deviceId: 'password',
+        lastLoginAt: new Date()
+      }
+    });
+
+    await prisma.wallet.create({
+      data: { userId: user.id, gemBalance: 0, shellBalance: 0, energy: 100 }
+    });
+
+    logger.info(`新用户（密码）注册: ${user.id}`);
+    return { userId: user.id, username: user.username ?? undefined, email: user.email ?? undefined };
+  }
+
+  /**
+   * 账号密码登录（identifier: username 或 email）
+   */
+  async loginWithPassword(params: { identifier: string; password: string; deviceId: string }): Promise<{
+    token: string; refreshToken: string; userId: string; needKYC: boolean;
+  }>{
+    const identifier = (params.identifier || '').trim();
+    const password = params.password || '';
+    const deviceId = params.deviceId || 'password';
+
+    if (!identifier || !password) throw new AppError('缺少用户名/邮箱或密码', 400);
+
+    const byEmail = identifier.includes('@');
+    const user = await prisma.user.findUnique({
+      where: byEmail ? { email: identifier.toLowerCase() } : { username: identifier }
+    });
+
+    if (!user || !user.passwordHash) {
+      throw new AppError('账号或密码错误', 401);
+    }
+
+    const ok = await bcrypt.compare(password, user.passwordHash);
+    if (!ok) throw new AppError('账号或密码错误', 401);
+
+    // 更新最近登录与设备
+    await prisma.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date(), deviceId } });
+
+    const tokenPayload = { userId: user.id, deviceId };
+    const token = generateAccessToken(tokenPayload);
+    const refreshToken = generateRefreshToken(tokenPayload);
+
+    logger.info(`用户（密码）登录: ${user.id}`);
+    return { token, refreshToken, userId: user.id, needKYC: user.kycStatus !== 'VERIFIED' };
+  }
   /**
    * 发送验证码
    */

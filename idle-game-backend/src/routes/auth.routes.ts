@@ -57,6 +57,26 @@ router.post('/login', loginRateLimiter, asyncHandler(async (req, res) => {
 }));
 
 /**
+ * POST /api/auth/register-password
+ * 账号密码注册
+ */
+router.post('/register-password', asyncHandler(async (req, res) => {
+  const { username, email, password } = req.body;
+  const result = await authService.registerWithPassword({ username, email, password });
+  res.json({ success: true, message: '注册成功', data: result, serverTime: new Date().toISOString() });
+}));
+
+/**
+ * POST /api/auth/login-password
+ * 账号密码登录
+ */
+router.post('/login-password', asyncHandler(async (req, res) => {
+  const { identifier, password, deviceId } = req.body; // identifier 可为 username 或 email
+  const result = await authService.loginWithPassword({ identifier, password, deviceId });
+  res.json({ success: true, message: '登录成功', data: result, serverTime: new Date().toISOString() });
+}));
+
+/**
  * POST /api/auth/refresh
  * 刷新token
  */

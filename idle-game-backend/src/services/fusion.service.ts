@@ -1,5 +1,5 @@
 import { prisma } from '../db/prisma.js';
-import { PetRarity } from '@prisma/client';
+import { PetRarity, TransactionType } from '@prisma/client';
 import { walletService } from './wallet.service.js';
 import logger from '../utils/logger.js';
 
@@ -223,9 +223,10 @@ class FusionService {
         await walletService.updateShells(
           userId,
           -rule.shellCost,
-          'SPEND',
-          '融合手续费',
-          `融合${this.RARITY_NAMES[targetRarity]}星宠`
+          TransactionType.SPEND,
+          'FUSION_FEE',
+          `融合${this.RARITY_NAMES[targetRarity]}星宠`,
+          tx
         );
 
         let newPet = null;

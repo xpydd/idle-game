@@ -40,7 +40,7 @@ const HOST = process.env.HOST || '0.0.0.0';
 // 基础中间件
 app.use(helmet()); // 安全头
 app.use(cors({
-  origin: process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost:5173'],
+  origin: (process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost:5173']).concat(['capacitor://localhost']),
   credentials: true
 }));
 app.use(express.json());
